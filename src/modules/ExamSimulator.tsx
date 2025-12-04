@@ -40,10 +40,23 @@ export default function ExamSimulator() {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [savedExamState, setSavedExamState] = useState<any>(null);
 
   useEffect(() => {
     loadMockExams();
+    checkForSavedExam();
   }, []);
+
+  useEffect(() => {
+    if (state === 'taking') {
+      const autoSaveInterval = setInterval(() => {
+        saveExamProgress();
+      }, 5000);
+
+      return () => clearInterval(autoSaveInterval);
+    }
+  }, [state, answers, flaggedQuestions, timeRemaining, currentQuestionIndex]);
 
   useEffect(() => {
     if (state === 'taking' && timeRemaining > 0) {
@@ -74,6 +87,76 @@ export default function ExamSimulator() {
     }
 
     setLoading(false);
+  }
+
+  function checkForSavedExam() {
+    const saved = localStorage.getItem('cfe_exam_progress');
+    if (saved) {
+      try {
+        const examState = JSON.parse(saved);
+        setSavedExamState(examState);
+        setShowResumePrompt(true);
+      } catch (error) {
+        console.error('Error parsing saved exam:', error);
+        localStorage.removeItem('cfe_exam_progress');
+      }
+    }
+  }
+
+  function saveExamProgress() {
+    if (state === 'taking' && selectedMock) {
+      const examState = {
+        mockExamId: selectedMock.id,
+        mockExamTitle: selectedMock.title,
+        questionIds: questions.map(q => q.id),
+        currentQuestionIndex,
+        answers: Array.from(answers.entries()),
+        flaggedQuestions: Array.from(flaggedQuestions),
+        timeRemaining,
+        startTime: startTime?.toISOString(),
+        savedAt: new Date().toISOString()
+      };
+
+      localStorage.setItem('cfe_exam_progress', JSON.stringify(examState));
+    }
+  }
+
+  async function resumeExam() {
+    if (!savedExamState) return;
+
+    setLoading(true);
+    const mock = mockExams.find(m => m.id === savedExamState.mockExamId);
+    if (!mock) {
+      setShowResumePrompt(false);
+      localStorage.removeItem('cfe_exam_progress');
+      setLoading(false);
+      return;
+    }
+
+    const { data: questionsData } = await supabase
+      .from('questions')
+      .select('*')
+      .in('id', savedExamState.questionIds);
+
+    if (questionsData) {
+      setSelectedMock(mock);
+      setQuestions(questionsData);
+      setCurrentQuestionIndex(savedExamState.currentQuestionIndex);
+      setAnswers(new Map(savedExamState.answers));
+      setFlaggedQuestions(new Set(savedExamState.flaggedQuestions));
+      setTimeRemaining(savedExamState.timeRemaining);
+      setStartTime(new Date(savedExamState.startTime));
+      setState('taking');
+      setShowResumePrompt(false);
+    }
+
+    setLoading(false);
+  }
+
+  function discardSavedExam() {
+    localStorage.removeItem('cfe_exam_progress');
+    setShowResumePrompt(false);
+    setSavedExamState(null);
   }
 
   async function startMockExam(mock: MockExam) {
@@ -121,6 +204,7 @@ export default function ExamSimulator() {
 
   async function finishExam() {
     setState('results');
+    localStorage.removeItem('cfe_exam_progress');
 
     const correctCount = questions.filter((q, idx) => {
       return answers.get(idx) === q.correct_answer;
@@ -133,8 +217,12 @@ export default function ExamSimulator() {
       user_id: 'demo-user',
       mock_exam_id: selectedMock!.id,
       score: Math.round(score),
-      time_spent_minutes: timeSpent,
-      answers: Object.fromEntries(answers)
+      total_questions: questions.length,
+      time_taken_minutes: timeSpent,
+      answers: {
+        responses: Object.fromEntries(answers),
+        flagged: Array.from(flaggedQuestions)
+      }
     });
 
     const xpReward = Math.floor(score * 5);
@@ -152,6 +240,72 @@ export default function ExamSimulator() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-gray-500">Loading mock exams...</div>
+      </div>
+    );
+  }
+
+  if (showResumePrompt && savedExamState) {
+    const timeSaved = new Date(savedExamState.savedAt);
+    const minutesAgo = Math.floor((Date.now() - timeSaved.getTime()) / 1000 / 60);
+
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+              <Clock className="w-8 h-8 text-blue-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Resume Exam?</h2>
+            <p className="text-gray-600">
+              You have an unfinished exam in progress
+            </p>
+          </div>
+
+          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 className="font-semibold text-gray-900 mb-2">{savedExamState.mockExamTitle}</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600">Progress:</span>
+                <span className="font-semibold text-gray-900 ml-2">
+                  {savedExamState.currentQuestionIndex + 1} / {savedExamState.questionIds.length}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-600">Answered:</span>
+                <span className="font-semibold text-gray-900 ml-2">
+                  {savedExamState.answers.length}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-600">Time Left:</span>
+                <span className="font-semibold text-gray-900 ml-2">
+                  {Math.floor(savedExamState.timeRemaining / 60)} min
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-600">Saved:</span>
+                <span className="font-semibold text-gray-900 ml-2">
+                  {minutesAgo < 1 ? 'Just now' : `${minutesAgo} min ago`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={discardSavedExam}
+              className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold transition-colors"
+            >
+              Start Fresh
+            </button>
+            <button
+              onClick={resumeExam}
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:shadow-lg font-semibold transition-all"
+            >
+              Resume Exam
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Download, Trash2, Calendar, Target, Bell } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Settings as SettingsIcon, Download, Trash2, Calendar, Target, Bell, Upload, FileText, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useGame } from '../contexts/GameContext';
+import { importQuestionsFromCSV, downloadSampleCSV, ImportResult } from '../utils/csvImporter';
 
 interface UserSettings {
   target_exam_date: string | null;
@@ -18,6 +19,9 @@ export default function Settings() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadSettings();
@@ -167,6 +171,37 @@ export default function Settings() {
     window.location.reload();
   }
 
+  async function handleFileImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+
+    try {
+      const result = await importQuestionsFromCSV(file);
+      setImportResult(result);
+
+      if (result.success) {
+        setTimeout(() => {
+          setImportResult(null);
+        }, 5000);
+      }
+    } catch (error) {
+      setImportResult({
+        success: false,
+        imported: 0,
+        failed: 0,
+        errors: [`Unexpected error: ${error}`]
+      });
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -261,6 +296,98 @@ export default function Settings() {
           >
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <div className="flex items-center mb-6">
+            <Upload className="w-6 h-6 text-purple-600 mr-3" />
+            <h2 className="text-xl font-bold text-gray-900">Content Management</h2>
+          </div>
+
+          <p className="text-gray-600 mb-6">
+            Import custom questions from CSV files to expand your study material. Perfect for adding organization-specific scenarios or additional practice questions.
+          </p>
+
+          <div className="mb-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFileImport}
+              className="hidden"
+              id="csv-upload"
+            />
+            <label
+              htmlFor="csv-upload"
+              className={`flex items-center justify-center px-6 py-3 rounded-lg font-semibold cursor-pointer transition-colors ${
+                importing
+                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                  : 'bg-purple-600 text-white hover:bg-purple-700'
+              }`}
+            >
+              <Upload className="w-5 h-5 mr-2" />
+              {importing ? 'Importing...' : 'Import Questions from CSV'}
+            </label>
+          </div>
+
+          <button
+            onClick={downloadSampleCSV}
+            className="w-full flex items-center justify-center px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold"
+          >
+            <FileText className="w-5 h-5 mr-2" />
+            Download CSV Template
+          </button>
+
+          {importResult && (
+            <div className={`mt-4 p-4 rounded-lg ${importResult.success ? 'bg-green-50 border-2 border-green-200' : 'bg-red-50 border-2 border-red-200'}`}>
+              <div className="flex items-center mb-2">
+                {importResult.success ? (
+                  <>
+                    <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                    <h3 className="font-bold text-green-900">Import Successful!</h3>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-5 h-5 text-red-600 mr-2" />
+                    <h3 className="font-bold text-red-900">Import Failed</h3>
+                  </>
+                )}
+              </div>
+
+              <div className="text-sm space-y-1 mb-3">
+                <div className={importResult.success ? 'text-green-800' : 'text-red-800'}>
+                  <strong>{importResult.imported}</strong> questions imported successfully
+                </div>
+                {importResult.failed > 0 && (
+                  <div className="text-red-800">
+                    <strong>{importResult.failed}</strong> questions failed
+                  </div>
+                )}
+              </div>
+
+              {importResult.errors.length > 0 && (
+                <div className="text-sm">
+                  <div className="font-semibold text-red-900 mb-1">Errors:</div>
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {importResult.errors.map((error, idx) => (
+                      <div key={idx} className="text-red-700">• {error}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h4 className="font-semibold text-blue-900 mb-2 text-sm">CSV Format Requirements:</h4>
+            <ul className="text-xs text-blue-800 space-y-1">
+              <li>• <strong>Required columns:</strong> section_id, domain_id, question_type, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation</li>
+              <li>• <strong>section_id:</strong> Must be 1, 2, 3, or 4</li>
+              <li>• <strong>correct_answer:</strong> Must be A, B, C, or D</li>
+              <li>• <strong>question_type:</strong> Must be "single", "multiple", or "true-false"</li>
+              <li>• Download the template for a properly formatted example</li>
+            </ul>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-md p-6">

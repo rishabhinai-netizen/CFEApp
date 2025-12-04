@@ -1,39 +1,46 @@
-import { Database, Zap } from 'lucide-react';
+import { Database, Zap, Menu } from 'lucide-react';
 import { useGame } from '../contexts/GameContext';
 
 interface TopbarProps {
   onSeedDatabase: () => void;
   seeded: boolean;
   seeding: boolean;
+  onMobileMenuToggle: () => void;
 }
 
-export default function Topbar({ onSeedDatabase, seeded, seeding }: TopbarProps) {
+export default function Topbar({ onSeedDatabase, seeded, seeding, onMobileMenuToggle }: TopbarProps) {
   const { gameState, loading } = useGame();
 
   const xpToNextLevel = (gameState.level * 1000) - gameState.xp;
   const xpProgress = ((gameState.xp % 1000) / 1000) * 100;
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-4">
+    <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-6">
+        <div className="flex items-center space-x-4 lg:space-x-6">
+          <button
+            onClick={onMobileMenuToggle}
+            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+          >
+            <Menu className="w-6 h-6 text-gray-700" />
+          </button>
           <div className="flex items-center space-x-2">
             <Zap className="w-5 h-5 text-yellow-500" />
             <div>
-              <div className="text-xs text-gray-500">Level {gameState.level}</div>
+              <div className="text-xs text-gray-500 hidden sm:block">Level {gameState.level}</div>
               <div className="flex items-center space-x-2">
-                <div className="w-32 h-2 bg-gray-200 rounded-full">
+                <div className="w-20 sm:w-32 h-2 bg-gray-200 rounded-full">
                   <div
                     className="h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full transition-all"
                     style={{ width: `${xpProgress}%` }}
                   ></div>
                 </div>
-                <span className="text-xs font-medium text-gray-700">{gameState.xp} XP</span>
+                <span className="text-xs font-medium text-gray-700 hidden sm:inline">{gameState.xp} XP</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center space-x-4 text-sm">
+          <div className="hidden md:flex items-center space-x-4 text-sm">
             <div>
               <span className="text-gray-500">Streak:</span>
               <span className="ml-2 font-bold text-orange-600">{gameState.streak_days} 🔥</span>
@@ -53,14 +60,14 @@ export default function Topbar({ onSeedDatabase, seeded, seeding }: TopbarProps)
           <button
             onClick={onSeedDatabase}
             disabled={seeding}
-            className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`flex items-center px-3 sm:px-4 py-2 rounded-lg font-medium transition-all text-sm ${
               seeding
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
           >
-            <Database className="w-4 h-4 mr-2" />
-            {seeding ? 'Seeding...' : 'Seed Database'}
+            <Database className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">{seeding ? 'Seeding...' : 'Seed Database'}</span>
           </button>
         )}
       </div>

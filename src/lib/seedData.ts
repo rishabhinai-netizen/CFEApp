@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { sections } from '../data/sections';
 
 export async function seedDatabase() {
   console.log('Starting database seed...');
@@ -140,12 +141,20 @@ async function seedGamificationState() {
   console.log('✓ Seeded gamification state');
 }
 
+function parseWeight(weight: string): number {
+  const match = weight.match(/(\d+)-(\d+)%/);
+  if (!match) return 0;
+  const min = parseInt(match[1]);
+  const max = parseInt(match[2]);
+  return (min + max) / 2;
+}
+
 async function seedMockExams() {
-  console.log('Seeding mock exams...');
+  console.log('Seeding mock exams with intelligent distribution...');
 
   const { data: questions } = await supabase
     .from('questions')
-    .select('id, section_id');
+    .select('id, section_id, domain_id');
 
   if (!questions || questions.length === 0) {
     console.log('⚠ No questions found, skipping mock exam creation');
@@ -155,41 +164,73 @@ async function seedMockExams() {
   const mockExams = [];
 
   for (let sectionId = 1; sectionId <= 4; sectionId++) {
-    const sectionQuestions = questions
-      .filter(q => q.section_id === sectionId)
-      .map(q => q.id)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 100);
+    const sectionData = sections.find(s => s.id === sectionId);
+    if (!sectionData) continue;
 
-    if (sectionQuestions.length >= 50) {
+    const targetQuestions = 100;
+    const selectedQuestions: string[] = [];
+    const totalWeight = sectionData.domains.reduce((sum, domain) => sum + parseWeight(domain.weight), 0);
+
+    for (const domain of sectionData.domains) {
+      const domainWeight = parseWeight(domain.weight);
+      const domainQuestionCount = Math.round((domainWeight / totalWeight) * targetQuestions);
+
+      const domainQuestions = questions
+        .filter(q => q.section_id === sectionId && q.domain_id === domain.id)
+        .map(q => q.id)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, domainQuestionCount);
+
+      selectedQuestions.push(...domainQuestions);
+    }
+
+    if (selectedQuestions.length >= 50) {
       mockExams.push({
         id: generateUUID(),
         title: `Section ${sectionId} Mock Exam`,
-        description: `Full-length practice exam for CFE Section ${sectionId} with 100 questions`,
+        description: `Weighted 100-question exam for CFE Section ${sectionId} matching real exam blueprint`,
         exam_type: 'section',
-        question_count: sectionQuestions.length,
+        question_count: selectedQuestions.length,
         time_limit_minutes: 120,
         passing_score: 75,
-        question_ids: sectionQuestions
+        question_ids: selectedQuestions
       });
     }
   }
 
-  const allQuestionIds = questions
-    .map(q => q.id)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 400);
+  const grandExamQuestions: string[] = [];
+  const questionsPerSection = 100;
 
-  if (allQuestionIds.length >= 200) {
+  for (let sectionId = 1; sectionId <= 4; sectionId++) {
+    const sectionData = sections.find(s => s.id === sectionId);
+    if (!sectionData) continue;
+
+    const totalWeight = sectionData.domains.reduce((sum, domain) => sum + parseWeight(domain.weight), 0);
+
+    for (const domain of sectionData.domains) {
+      const domainWeight = parseWeight(domain.weight);
+      const domainQuestionCount = Math.round((domainWeight / totalWeight) * questionsPerSection);
+
+      const domainQuestions = questions
+        .filter(q => q.section_id === sectionId && q.domain_id === domain.id)
+        .map(q => q.id)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, domainQuestionCount);
+
+      grandExamQuestions.push(...domainQuestions);
+    }
+  }
+
+  if (grandExamQuestions.length >= 200) {
     mockExams.push({
       id: generateUUID(),
       title: 'Grand Mock Exam - All Sections',
-      description: 'Comprehensive 400-question practice exam covering all 4 CFE sections',
+      description: 'Comprehensive 400-question exam matching actual CFE exam blueprint with weighted domain distribution',
       exam_type: 'grand',
-      question_count: allQuestionIds.length,
+      question_count: grandExamQuestions.length,
       time_limit_minutes: 480,
       passing_score: 75,
-      question_ids: allQuestionIds
+      question_ids: grandExamQuestions
     });
   }
 
@@ -202,7 +243,7 @@ async function seedMockExams() {
     throw error;
   }
 
-  console.log(`✓ Seeded ${mockExams.length} mock exams`);
+  console.log(`✓ Seeded ${mockExams.length} intelligent mock exams with weighted distribution`);
 }
 
 function generateUUID() {
